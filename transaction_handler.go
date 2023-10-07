@@ -2,7 +2,7 @@ package mongo
 
 import (
 	"context"
-	"github.com/djedjethai/go-oauth2-openid/oauth2"
+	oauth2 "github.com/djedjethai/go-oauth2-openid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
