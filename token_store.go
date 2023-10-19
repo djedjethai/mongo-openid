@@ -113,25 +113,19 @@ func NewTokenStoreWithSession(client *mongo.Client, cfg *Config, scfgs ...*Store
 	}
 
 	_, err := ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.BasicCName).Indexes().CreateOne(context.TODO(), mongo.IndexModel{
-		Keys:    bson.D{{"ExpiredAt", 1}},
-		Options: options.Index().SetExpireAfterSeconds(1),
-	})
+		Keys: bson.D{{"ExpiredAt", 1}}})
 	if err != nil {
 		log.Fatalln("Error creating index: ", ts.tcfg.BasicCName, " - ", err)
 	}
 
 	_, err = ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.AccessCName).Indexes().CreateOne(context.TODO(), mongo.IndexModel{
-		Keys:    bson.D{{"ExpiredAt", 1}},
-		Options: options.Index().SetExpireAfterSeconds(1),
-	})
+		Keys: bson.D{{"ExpiredAt", 1}}})
 	if err != nil {
 		log.Fatalln("Error creating index: ", ts.tcfg.AccessCName, " - ", err)
 	}
 
 	_, err = ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.RefreshCName).Indexes().CreateOne(context.TODO(), mongo.IndexModel{
-		Keys:    bson.D{{"ExpiredAt", 1}},
-		Options: options.Index().SetExpireAfterSeconds(1),
-	})
+		Keys: bson.D{{"ExpiredAt", 1}}})
 	if err != nil {
 		log.Fatalln("Error creating index: ", ts.tcfg.RefreshCName, " - ", err)
 	}
