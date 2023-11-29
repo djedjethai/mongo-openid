@@ -247,9 +247,41 @@ func (cs *ClientStore) RemoveByID(id string) (err error) {
 	return err
 }
 
+// AddJWToken use the client id to get match the tuple and add/update the svc jwt
+func (cs *ClientStore) UpsertClientJWToken(ctx context.Context, id, JWToken string) (err error) {
+
+	ctxReq, cancel := cs.ccfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	// Specify the update to add or update a field
+	update := bson.M{
+		"$set": bson.M{
+			"jwtoken": JWToken, // replace with your field and value
+		},
+	}
+
+	filter := bson.M{"_id": id}
+	// _, err = cs.c(cs.ccfg.ClientsCName).DeleteOne(ctx, filter)
+
+	// Options to upsert (insert if not exists)
+	options := options.Update().SetUpsert(true)
+
+	// Perform the update operation
+	_, err = cs.c(cs.ccfg.ClientsCName).UpdateOne(ctx, filter, update, options)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 type client struct {
-	ID     string `bson:"_id"`
-	Secret string `bson:"secret"`
-	Domain string `bson:"domain"`
-	UserID string `bson:"userid"`
+	ID      string `bson:"_id"`
+	Secret  string `bson:"secret"`
+	Domain  string `bson:"domain"`
+	UserID  string `bson:"userid"`
+	JWToken string `bson:"jwtoken,omitempty"`
 }
