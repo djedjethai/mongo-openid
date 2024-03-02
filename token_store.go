@@ -141,6 +141,10 @@ type TokenStore struct {
 	txnHandler *transactionHandler
 }
 
+func (ts *TokenStore) getClient() *mongo.Client {
+	return ts.client
+}
+
 // Close close the mongo session
 func (ts *TokenStore) Close() {
 	if err := ts.client.Disconnect(context.Background()); err != nil {
@@ -314,7 +318,8 @@ func (ts *TokenStore) RemoveByRefresh(ctx context.Context, refresh string) (err 
 
 // RemoveAllTokensByAccess use the access token to remove all tokens
 func (ts *TokenStore) RemoveAllTokensByAccess(ctx context.Context, access string) (err error) {
-	basicID, err := ts.getBasicID(ts.tcfg.AccessCName, access)
+	var basicID string
+	basicID, err = ts.getBasicID(ts.tcfg.AccessCName, access)
 	if err != nil && basicID == "" {
 		return
 	}
@@ -325,7 +330,8 @@ func (ts *TokenStore) RemoveAllTokensByAccess(ctx context.Context, access string
 
 // RemoveAllTokensByRefresh use the refresh token to remove all tokens
 func (ts *TokenStore) RemoveAllTokensByRefresh(ctx context.Context, refresh string) (err error) {
-	basicID, err := ts.getBasicID(ts.tcfg.RefreshCName, refresh)
+	var basicID string
+	basicID, err = ts.getBasicID(ts.tcfg.RefreshCName, refresh)
 	if err != nil && basicID == "" {
 		return
 	}
@@ -402,6 +408,7 @@ func (ts *TokenStore) getData(basicID string) (ti oauth2.TokenInfo, err error) {
 	if err != nil {
 		return
 	}
+
 	ti = &tm
 
 	return
@@ -439,6 +446,7 @@ func (ts *TokenStore) GetByAccess(ctx context.Context, access string) (ti oauth2
 	if err != nil && basicID == "" {
 		return
 	}
+
 	ti, err = ts.getData(basicID)
 	return
 }
