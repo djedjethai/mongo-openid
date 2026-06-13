@@ -3,6 +3,7 @@ package mongo
 import (
 	"context"
 	"encoding/json"
+	// "fmt"
 	"log"
 	"time"
 
@@ -170,10 +171,21 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 		ctx = ctxReq
 	}
 
+	cid := info.GetClientID()
+	uid := info.GetUserID()
+	var svcName = ""
+	if cid != "" {
+		svcName = cid
+	}
+	if uid != "" {
+		svcName = uid
+	}
+
 	if code := info.GetCode(); code != "" {
 		// Create the basicData document
 		basicData := basicData{
 			ID:        code,
+			Service:   svcName,
 			Data:      jv,
 			ExpiredAt: info.GetCodeCreateAt().Add(info.GetCodeExpiresIn()),
 		}
@@ -200,6 +212,7 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 	// Create the basicData document
 	basicData := basicData{
 		ID:        id,
+		Service:   svcName,
 		Data:      jv,
 		ExpiredAt: rexp,
 	}
@@ -271,6 +284,7 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 	return
 }
 
+// NOTE pb here ????? the _id are not the code...........???
 // RemoveByCode use the authorization code to delete the token information
 func (ts *TokenStore) RemoveByCode(ctx context.Context, code string) (err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
@@ -281,7 +295,7 @@ func (ts *TokenStore) RemoveByCode(ctx context.Context, code string) (err error)
 
 	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: code}})
 	if err != nil {
-		log.Println("Error RemoveByCode: ", err)
+		log.Println("Error RemoveByCode --------------------------- ", err)
 	}
 	return
 }
@@ -338,6 +352,42 @@ func (ts *TokenStore) RemoveAllTokensByRefresh(ctx context.Context, refresh stri
 	ti, err := ts.getData(basicID)
 
 	return ts.removeAllTokens(ctx, ti, basicID)
+}
+
+// RemoveByService use the service name to delete the basic, access, refresh
+func (ts *TokenStore) RemoveByService(ctx context.Context, svcName string) (err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var bd basicData
+	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "Service", Value: svcName}}).Decode(&bd)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return
+		}
+		return
+	}
+
+	_, err = ts.c(ts.tcfg.AccessCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: bd.ID}})
+	if err != nil {
+		log.Println("Error RemoveByCode: ", err)
+	}
+
+	_, err = ts.c(ts.tcfg.RefreshCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: bd.ID}})
+	if err != nil {
+		log.Println("Error RemoveByCode: ", err)
+	}
+
+	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: bd.ID}})
+	if err != nil {
+		log.Println("Error RemoveByCode: ", err)
+	}
+
+	return
 }
 
 func (ts *TokenStore) removeAllTokens(ctx context.Context, ti oauth2.TokenInfo, basic string) (err error) {
@@ -463,6 +513,7 @@ func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oaut
 
 type basicData struct {
 	ID        string    `bson:"_id"`
+	Service   string    `bson:"Service"`
 	Data      []byte    `bson:"Data"`
 	ExpiredAt time.Time `bson:"ExpiredAt"`
 }
