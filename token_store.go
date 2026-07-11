@@ -171,23 +171,24 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 		ctx = ctxReq
 	}
 
-	cid := info.GetClientID()
-	uid := info.GetUserID()
-	var svcName = ""
-	if cid != "" {
-		svcName = cid
+	// svcName is the serviceName for servers or userEmail for user
+	svcName := info.GetUserID()
+	if svcName == "" {
+		svcName = info.GetClientID()
 	}
-	if uid != "" {
-		svcName = uid
-	}
+
+	userPassword := info.GetUserPassword()
+	userPath := info.GetUserPath()
 
 	if code := info.GetCode(); code != "" {
 		// Create the basicData document
 		basicData := basicData{
-			ID:        code,
-			Service:   svcName,
-			Data:      jv,
-			ExpiredAt: info.GetCodeCreateAt().Add(info.GetCodeExpiresIn()),
+			ID:           code,
+			Service:      svcName,
+			UserPassword: userPassword,
+			UserPath:     userPath,
+			Data:         jv,
+			ExpiredAt:    info.GetCodeCreateAt().Add(info.GetCodeExpiresIn()),
 		}
 
 		_, err = ts.c(ts.tcfg.BasicCName).InsertOne(ctx, basicData)
@@ -211,10 +212,12 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 
 	// Create the basicData document
 	basicData := basicData{
-		ID:        id,
-		Service:   svcName,
-		Data:      jv,
-		ExpiredAt: rexp,
+		ID:           id,
+		Service:      svcName,
+		UserPassword: userPassword,
+		UserPath:     userPath,
+		Data:         jv,
+		ExpiredAt:    rexp,
 	}
 
 	// Create the tokenData document for access
@@ -284,7 +287,6 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 	return
 }
 
-// NOTE pb here ????? the _id are not the code...........???
 // RemoveByCode use the authorization code to delete the token information
 func (ts *TokenStore) RemoveByCode(ctx context.Context, code string) (err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
@@ -295,7 +297,7 @@ func (ts *TokenStore) RemoveByCode(ctx context.Context, code string) (err error)
 
 	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: code}})
 	if err != nil {
-		log.Println("Error RemoveByCode --------------------------- ", err)
+		log.Println("Error RemoveByCode: ", err)
 	}
 	return
 }
@@ -328,6 +330,15 @@ func (ts *TokenStore) RemoveByRefresh(ctx context.Context, refresh string) (err 
 		log.Println("Error RemoveByRefresh: ", err)
 	}
 	return
+}
+
+// RemoveAllTokensByCode use the authorisationCode token to remove all tokens
+func (ts *TokenStore) RemoveAllTokensByCode(ctx context.Context, code string) (err error) {
+	if code == "" {
+		return
+	}
+	ti, err := ts.getData(code)
+	return ts.removeAllTokens(ctx, ti, code)
 }
 
 // RemoveAllTokensByAccess use the access token to remove all tokens
@@ -512,10 +523,12 @@ func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oaut
 }
 
 type basicData struct {
-	ID        string    `bson:"_id"`
-	Service   string    `bson:"Service"`
-	Data      []byte    `bson:"Data"`
-	ExpiredAt time.Time `bson:"ExpiredAt"`
+	ID           string    `bson:"_id"`
+	Service      string    `bson:"Service"` // serverName for server or userEmail
+	UserPassword string    `bson:"UserPassword"`
+	UserPath     string    `bson:"UserPath"`
+	Data         []byte    `bson:"Data"`
+	ExpiredAt    time.Time `bson:"ExpiredAt"`
 }
 
 type tokenData struct {
