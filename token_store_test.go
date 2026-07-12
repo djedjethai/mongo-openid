@@ -2,11 +2,12 @@ package mongo
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	"github.com/djedjethai/go-oauth2-openid/models"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.mongodb.org/mongo-driver/bson"
-	"testing"
-	"time"
 )
 
 func clearTokenEntries(ts *TokenStore, collection string) error {
@@ -350,6 +351,68 @@ func TestTokenStoreDeleteTokens(t *testing.T) {
 			So(tot, ShouldEqual, 0)
 			So(err, ShouldBeNil)
 
+		})
+
+		// test delete an entry using RemoveByService
+		Convey("Test the RemoveByService", func() {
+			info := &models.Token{
+				ClientID:         "1",
+				UserID:           "1_2",
+				UserPassword:     "password",
+				UserPath:         "path",
+				RedirectURI:      "http://localhost/",
+				Scope:            "all",
+				Access:           "1_2_1",
+				AccessCreateAt:   time.Now(),
+				AccessExpiresIn:  time.Second * 5,
+				Refresh:          "1_2_2",
+				RefreshCreateAt:  time.Now(),
+				RefreshExpiresIn: time.Second * 15,
+			}
+			err := store.Create(context.TODO(), info)
+			So(err, ShouldBeNil)
+
+			rinfo, err := store.GetByRefresh(context.TODO(), info.GetRefresh())
+			So(err, ShouldBeNil)
+			So(rinfo.GetUserID(), ShouldEqual, "1_2")
+			So(rinfo.GetUserPassword(), ShouldEqual, "password")
+			So(rinfo.GetUserPath(), ShouldEqual, "path")
+			So(err, ShouldBeNil)
+			So(rinfo.GetUserID(), ShouldEqual, info.GetUserID())
+
+			err = store.RemoveByService(context.TODO(), info.GetUserID())
+			So(err, ShouldBeNil)
+
+			rinfo, err = store.GetByRefresh(context.TODO(), info.GetRefresh())
+			So(err.Error(), ShouldEqual, "mongo: no documents in result")
+			So(rinfo, ShouldBeNil)
+
+			// rinfo, err = store.GetByCode(context.TODO(), info.GetUserID())
+			// fmt.Println("grrrrr---: ", err)
+			// fmt.Println("grrrrr---: ", rinfo)
+			// So(err.Error(), ShouldEqual, "mongo: no documents in result")
+			// So(rinfo, ShouldBeNil)
+
+			rinfo, err = store.GetByAccess(context.TODO(), info.GetAccess())
+			So(err.Error(), ShouldEqual, "mongo: no documents in result")
+			So(rinfo, ShouldBeNil)
+
+			// make sure all tokens has been removed
+			tot, err := countTokenEntries(store, store.tcfg.BasicCName)
+			So(tot, ShouldEqual, 0)
+			So(err, ShouldBeNil)
+
+			tot, err = countTokenEntries(store, store.tcfg.AccessCName)
+			So(tot, ShouldEqual, 0)
+			So(err, ShouldBeNil)
+
+			tot, err = countTokenEntries(store, store.tcfg.RefreshCName)
+			So(tot, ShouldEqual, 0)
+			So(err, ShouldBeNil)
+
+			// cleanup
+			err = store.RemoveByAccess(context.TODO(), info.GetAccess())
+			So(err, ShouldBeNil)
 		})
 
 	})
