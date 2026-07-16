@@ -3,18 +3,19 @@ package mongo
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	// "runtime/debug"
 
-	// "fmt"
 	"log"
 	"time"
 
 	oauth2 "github.com/djedjethai/go-oauth2-openid"
 	"github.com/djedjethai/go-oauth2-openid/models"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	// "go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/mongo/writeconcern"
+	// "go.mongodb.org/mongo-driver/mongo/writeconcern"
 )
 
 // TokenConfig token configuration parameters
@@ -178,28 +179,6 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 		svcName = info.GetClientID()
 	}
 
-	userPassword := info.GetUserPassword()
-	userPath := info.GetUserPath()
-
-	if code := info.GetCode(); code != "" {
-		// Create the basicData document
-		basicData := basicData{
-			ID:           code,
-			Service:      svcName,
-			UserPassword: userPassword,
-			UserPath:     userPath,
-			Data:         jv,
-			ExpiredAt:    info.GetCodeCreateAt().Add(info.GetCodeExpiresIn()),
-		}
-
-		_, err = ts.c(ts.tcfg.BasicCName).InsertOne(ctx, basicData)
-		if err != nil {
-			log.Println("Error CreateToken with code: ", err)
-		}
-
-		return
-	}
-
 	aexp := info.GetAccessCreateAt().Add(info.GetAccessExpiresIn())
 	rexp := aexp
 	if refresh := info.GetRefresh(); refresh != "" {
@@ -209,82 +188,30 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 		}
 	}
 
-	id := primitive.NewObjectID().Hex()
+	userPassword := info.GetUserPassword()
+	userPath := info.GetUserPath()
 
 	// Create the basicData document
+	code := info.GetCode()
+	if code == "" {
+		log.Println("create code entry in database, missing code")
+		err = errors.New("create code entry in database, missing code")
+		return
+	}
 	basicData := basicData{
-		ID:           id,
+		ID:           code,
 		Service:      svcName,
 		UserPassword: userPassword,
 		UserPath:     userPath,
 		Data:         jv,
-		ExpiredAt:    rexp,
+		ExpiredAt:    info.GetCodeCreateAt().Add(info.GetCodeExpiresIn()),
 	}
 
-	// Create the tokenData document for access
-	accessData := tokenData{
-		ID:        info.GetAccess(),
-		BasicID:   id,
-		ExpiredAt: aexp,
+	_, err = ts.c(ts.tcfg.BasicCName).InsertOne(ctx, basicData)
+	if err != nil {
+		log.Println("Error CreateToken with code: ", err)
 	}
 
-	// if context is defined, increase it for the transaction
-	ctxTxn, cancel := ts.tcfg.storeConfig.setTransactionCreateContext()
-	defer cancel()
-	if ctxTxn != nil {
-		ctx = ctxReq
-	}
-
-	// MongoDB is deployed as a replicaSet
-	if ts.tcfg.storeConfig.isReplicaSet {
-
-		// Create collections
-		wcMajority := writeconcern.New(writeconcern.WMajority(), writeconcern.WTimeout(2*time.Second))
-		wcMajorityCollectionOpts := options.Collection().SetWriteConcern(wcMajority)
-
-		basicColl := ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.BasicCName, wcMajorityCollectionOpts)
-		accessColl := ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.AccessCName, wcMajorityCollectionOpts)
-		refreshColl := ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.RefreshCName, wcMajorityCollectionOpts)
-
-		callback := func(sessCtx mongo.SessionContext) (interface{}, error) {
-			if _, err := basicColl.InsertOne(sessCtx, basicData); err != nil {
-				return nil, err
-			}
-			if _, err := accessColl.InsertOne(sessCtx, accessData); err != nil {
-				return nil, err
-			}
-
-			refresh := info.GetRefresh()
-			if refresh != "" {
-				refreshData := tokenData{
-					ID:        refresh,
-					BasicID:   id,
-					ExpiredAt: rexp,
-				}
-				if _, err := refreshColl.InsertOne(sessCtx, refreshData); err != nil {
-					return nil, err
-				}
-
-			}
-			return nil, nil
-		}
-
-		session, err := ts.client.StartSession()
-		if err != nil {
-			return err
-		}
-		defer session.EndSession(ctx)
-		result, err := session.WithTransaction(ctx, callback)
-		if err != nil {
-			return err
-		}
-		log.Printf("result: %v\n", result)
-
-	} else {
-		// MongoDB is deployed as a single instance
-		return ts.txnHandler.runTransactionCreate(ctx, info, basicData, accessData, id, rexp)
-
-	}
 	return
 }
 
@@ -303,68 +230,68 @@ func (ts *TokenStore) RemoveByCode(ctx context.Context, code string) (err error)
 	return
 }
 
-// RemoveByAccess use the access token to delete the token information
-func (ts *TokenStore) RemoveByAccess(ctx context.Context, access string) (err error) {
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	_, err = ts.c(ts.tcfg.AccessCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: access}})
-	if err != nil {
-		log.Println("Error RemoveByAccess: ", err)
-	}
-	return
-}
-
-// RemoveByRefresh use the refresh token to delete the token information
-func (ts *TokenStore) RemoveByRefresh(ctx context.Context, refresh string) (err error) {
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	_, err = ts.c(ts.tcfg.RefreshCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: refresh}})
-	if err != nil {
-		log.Println("Error RemoveByRefresh: ", err)
-	}
-	return
-}
-
-// RemoveAllTokensByCode use the authorisationCode token to remove all tokens
-func (ts *TokenStore) RemoveAllTokensByCode(ctx context.Context, code string) (err error) {
-	if code == "" {
-		return
-	}
-	ti, err := ts.getData(code)
-	return ts.removeAllTokens(ctx, ti, code)
-}
-
-// RemoveAllTokensByAccess use the access token to remove all tokens
-func (ts *TokenStore) RemoveAllTokensByAccess(ctx context.Context, access string) (err error) {
-	var basicID string
-	basicID, err = ts.getBasicID(ts.tcfg.AccessCName, access)
-	if err != nil && basicID == "" {
-		return
-	}
-	ti, err := ts.getData(basicID)
-
-	return ts.removeAllTokens(ctx, ti, basicID)
-}
-
-// RemoveAllTokensByRefresh use the refresh token to remove all tokens
-func (ts *TokenStore) RemoveAllTokensByRefresh(ctx context.Context, refresh string) (err error) {
-	var basicID string
-	basicID, err = ts.getBasicID(ts.tcfg.RefreshCName, refresh)
-	if err != nil && basicID == "" {
-		return
-	}
-	ti, err := ts.getData(basicID)
-
-	return ts.removeAllTokens(ctx, ti, basicID)
-}
+// // RemoveByAccess use the access token to delete the token information
+// func (ts *TokenStore) RemoveByAccess(ctx context.Context, access string) (err error) {
+// 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+// 	defer cancel()
+// 	if ctxReq != nil {
+// 		ctx = ctxReq
+// 	}
+//
+// 	_, err = ts.c(ts.tcfg.AccessCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: access}})
+// 	if err != nil {
+// 		log.Println("Error RemoveByAccess: ", err)
+// 	}
+// 	return
+// }
+//
+// // RemoveByRefresh use the refresh token to delete the token information
+// func (ts *TokenStore) RemoveByRefresh(ctx context.Context, refresh string) (err error) {
+// 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+// 	defer cancel()
+// 	if ctxReq != nil {
+// 		ctx = ctxReq
+// 	}
+//
+// 	_, err = ts.c(ts.tcfg.RefreshCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: refresh}})
+// 	if err != nil {
+// 		log.Println("Error RemoveByRefresh: ", err)
+// 	}
+// 	return
+// }
+//
+// // RemoveAllTokensByCode use the authorisationCode token to remove all tokens
+// func (ts *TokenStore) RemoveAllTokensByCode(ctx context.Context, code string) (err error) {
+// 	if code == "" {
+// 		return
+// 	}
+// 	ti, err := ts.getData(code)
+// 	return ts.removeAllTokens(ctx, ti, code)
+// }
+//
+// // RemoveAllTokensByAccess use the access token to remove all tokens
+// func (ts *TokenStore) RemoveAllTokensByAccess(ctx context.Context, access string) (err error) {
+// 	var basicID string
+// 	basicID, err = ts.getBasicID(ts.tcfg.AccessCName, access)
+// 	if err != nil && basicID == "" {
+// 		return
+// 	}
+// 	ti, err := ts.getData(basicID)
+//
+// 	return ts.removeAllTokens(ctx, ti, basicID)
+// }
+//
+// // RemoveAllTokensByRefresh use the refresh token to remove all tokens
+// func (ts *TokenStore) RemoveAllTokensByRefresh(ctx context.Context, refresh string) (err error) {
+// 	var basicID string
+// 	basicID, err = ts.getBasicID(ts.tcfg.RefreshCName, refresh)
+// 	if err != nil && basicID == "" {
+// 		return
+// 	}
+// 	ti, err := ts.getData(basicID)
+//
+// 	return ts.removeAllTokens(ctx, ti, basicID)
+// }
 
 // RemoveByService use the service name to delete the basic, access, refresh
 func (ts *TokenStore) RemoveByService(ctx context.Context, svcName string) (err error) {
@@ -384,15 +311,15 @@ func (ts *TokenStore) RemoveByService(ctx context.Context, svcName string) (err 
 		return
 	}
 
-	_, err = ts.c(ts.tcfg.AccessCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: bd.ID}})
-	if err != nil {
-		log.Println("Error RemoveByCode: ", err)
-	}
+	// _, err = ts.c(ts.tcfg.AccessCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: bd.ID}})
+	// if err != nil {
+	// 	log.Println("Error RemoveByCode: ", err)
+	// }
 
-	_, err = ts.c(ts.tcfg.RefreshCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: bd.ID}})
-	if err != nil {
-		log.Println("Error RemoveByCode: ", err)
-	}
+	// _, err = ts.c(ts.tcfg.RefreshCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: bd.ID}})
+	// if err != nil {
+	// 	log.Println("Error RemoveByCode: ", err)
+	// }
 
 	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: bd.ID}})
 	if err != nil {
@@ -402,51 +329,51 @@ func (ts *TokenStore) RemoveByService(ctx context.Context, svcName string) (err 
 	return
 }
 
-func (ts *TokenStore) removeAllTokens(ctx context.Context, ti oauth2.TokenInfo, basic string) (err error) {
-
-	// MongoDB is deployed as a replicaSet
-	if ts.tcfg.storeConfig.isReplicaSet {
-		// Create collections
-		wcMajority := writeconcern.New(writeconcern.WMajority(), writeconcern.WTimeout(2*time.Second))
-		wcMajorityCollectionOpts := options.Collection().SetWriteConcern(wcMajority)
-
-		basicColl := ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.BasicCName, wcMajorityCollectionOpts)
-		accessColl := ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.AccessCName, wcMajorityCollectionOpts)
-		refreshColl := ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.RefreshCName, wcMajorityCollectionOpts)
-
-		callback := func(sessCtx mongo.SessionContext) (interface{}, error) {
-			if _, err := accessColl.DeleteOne(sessCtx, bson.D{{Key: "_id", Value: ti.GetAccess()}}); err != nil {
-				return nil, err
-			}
-			if _, err := refreshColl.DeleteOne(sessCtx, bson.D{{Key: "_id", Value: ti.GetRefresh()}}); err != nil {
-				return nil, err
-			}
-			if _, err := basicColl.DeleteOne(sessCtx, bson.D{{Key: "_id", Value: basic}}); err != nil {
-				return nil, err
-			}
-
-			return nil, nil
-		}
-
-		session, err := ts.client.StartSession()
-		if err != nil {
-			return err
-		}
-		defer session.EndSession(ctx)
-		result, err := session.WithTransaction(ctx, callback)
-		if err != nil {
-			return err
-		}
-		log.Printf("result: %v\n", result)
-
-	} else {
-		// MongoDB is deployed as a single instance
-		return ts.txnHandler.runTransactionDelete(ctx, ti, basic)
-
-	}
-
-	return nil
-}
+// func (ts *TokenStore) removeAllTokens(ctx context.Context, ti oauth2.TokenInfo, basic string) (err error) {
+//
+// 	// MongoDB is deployed as a replicaSet
+// 	if ts.tcfg.storeConfig.isReplicaSet {
+// 		// Create collections
+// 		wcMajority := writeconcern.New(writeconcern.WMajority(), writeconcern.WTimeout(2*time.Second))
+// 		wcMajorityCollectionOpts := options.Collection().SetWriteConcern(wcMajority)
+//
+// 		basicColl := ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.BasicCName, wcMajorityCollectionOpts)
+// 		accessColl := ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.AccessCName, wcMajorityCollectionOpts)
+// 		refreshColl := ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.RefreshCName, wcMajorityCollectionOpts)
+//
+// 		callback := func(sessCtx mongo.SessionContext) (interface{}, error) {
+// 			if _, err := accessColl.DeleteOne(sessCtx, bson.D{{Key: "_id", Value: ti.GetAccess()}}); err != nil {
+// 				return nil, err
+// 			}
+// 			if _, err := refreshColl.DeleteOne(sessCtx, bson.D{{Key: "_id", Value: ti.GetRefresh()}}); err != nil {
+// 				return nil, err
+// 			}
+// 			if _, err := basicColl.DeleteOne(sessCtx, bson.D{{Key: "_id", Value: basic}}); err != nil {
+// 				return nil, err
+// 			}
+//
+// 			return nil, nil
+// 		}
+//
+// 		session, err := ts.client.StartSession()
+// 		if err != nil {
+// 			return err
+// 		}
+// 		defer session.EndSession(ctx)
+// 		result, err := session.WithTransaction(ctx, callback)
+// 		if err != nil {
+// 			return err
+// 		}
+// 		log.Printf("result: %v\n", result)
+//
+// 	} else {
+// 		// MongoDB is deployed as a single instance
+// 		return ts.txnHandler.runTransactionDelete(ctx, ti, basic)
+//
+// 	}
+//
+// 	return nil
+// }
 
 func (ts *TokenStore) getData(basicID string) (ti oauth2.TokenInfo, err error) {
 	ctx := context.Background()
@@ -502,26 +429,26 @@ func (ts *TokenStore) GetByCode(ctx context.Context, code string) (ti oauth2.Tok
 	return
 }
 
-// GetByAccess use the access token for token information data
-func (ts *TokenStore) GetByAccess(ctx context.Context, access string) (ti oauth2.TokenInfo, err error) {
-	basicID, err := ts.getBasicID(ts.tcfg.AccessCName, access)
-	if err != nil && basicID == "" {
-		return
-	}
-
-	ti, err = ts.getData(basicID)
-	return
-}
-
-// GetByRefresh use the refresh token for token information data
-func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oauth2.TokenInfo, err error) {
-	basicID, err := ts.getBasicID(ts.tcfg.RefreshCName, refresh)
-	if err != nil && basicID == "" {
-		return
-	}
-	ti, err = ts.getData(basicID)
-	return
-}
+// // GetByAccess use the access token for token information data
+// func (ts *TokenStore) GetByAccess(ctx context.Context, access string) (ti oauth2.TokenInfo, err error) {
+// 	basicID, err := ts.getBasicID(ts.tcfg.AccessCName, access)
+// 	if err != nil && basicID == "" {
+// 		return
+// 	}
+//
+// 	ti, err = ts.getData(basicID)
+// 	return
+// }
+//
+// // GetByRefresh use the refresh token for token information data
+// func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oauth2.TokenInfo, err error) {
+// 	basicID, err := ts.getBasicID(ts.tcfg.RefreshCName, refresh)
+// 	if err != nil && basicID == "" {
+// 		return
+// 	}
+// 	ti, err = ts.getData(basicID)
+// 	return
+// }
 
 type basicData struct {
 	ID           string    `bson:"_id"`
