@@ -21,24 +21,24 @@ import (
 // TokenConfig token configuration parameters
 type TokenConfig struct {
 	// store txn collection name(The default is oauth2)
-	TxnCName string
+	// TxnCName string
 	// store token based data collection name(The default is oauth2_basic)
 	BasicCName string
 	// store access token data collection name(The default is oauth2_access)
-	AccessCName string
+	// AccessCName string
 	// store refresh token data collection name(The default is oauth2_refresh)
-	RefreshCName string
-	storeConfig  *StoreConfig
+	// RefreshCName string
+	storeConfig *StoreConfig
 }
 
 // NewDefaultTokenConfig create a default token configuration
 func NewDefaultTokenConfig(strConfig *StoreConfig) *TokenConfig {
 	return &TokenConfig{
-		TxnCName:     "oauth2_txn",
-		BasicCName:   "oauth2_basic",
-		AccessCName:  "oauth2_access",
-		RefreshCName: "oauth2_refresh",
-		storeConfig:  strConfig,
+		// TxnCName:     "oauth2_txn",
+		BasicCName: "oauth2_basic",
+		// AccessCName:  "oauth2_access",
+		// RefreshCName: "oauth2_refresh",
+		storeConfig: strConfig,
 	}
 }
 
@@ -104,16 +104,16 @@ func NewTokenStoreWithSession(client *mongo.Client, cfg *Config, scfgs ...*Store
 		}
 	}
 
-	if !ts.tcfg.storeConfig.isReplicaSet {
-		ts.txnHandler = NewTransactionHandler(client, ts.tcfg)
+	// if !ts.tcfg.storeConfig.isReplicaSet {
+	// 	ts.txnHandler = NewTransactionHandler(client, ts.tcfg)
 
-		// in case transactions did fail, remove garbage records
-		err := ts.txnHandler.tw.cleanupTransactionsData(context.TODO(), cfg.Service)
-		if err != nil {
-			// TODO what to do with that err ??
-			log.Println("Err cleanupTransactionsData failed: ", err)
-		}
-	}
+	// 	// in case transactions did fail, remove garbage records
+	// 	err := ts.txnHandler.tw.cleanupTransactionsData(context.TODO(), cfg.Service)
+	// 	if err != nil {
+	// 		// TODO what to do with that err ??
+	// 		log.Println("Err cleanupTransactionsData failed: ", err)
+	// 	}
+	// }
 
 	_, err := ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.BasicCName).Indexes().CreateOne(context.TODO(), mongo.IndexModel{
 		Keys: bson.D{{"ExpiredAt", 1}}})
@@ -121,17 +121,17 @@ func NewTokenStoreWithSession(client *mongo.Client, cfg *Config, scfgs ...*Store
 		log.Fatalln("Error creating index: ", ts.tcfg.BasicCName, " - ", err)
 	}
 
-	_, err = ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.AccessCName).Indexes().CreateOne(context.TODO(), mongo.IndexModel{
-		Keys: bson.D{{"ExpiredAt", 1}}})
-	if err != nil {
-		log.Fatalln("Error creating index: ", ts.tcfg.AccessCName, " - ", err)
-	}
+	// _, err = ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.AccessCName).Indexes().CreateOne(context.TODO(), mongo.IndexModel{
+	// 	Keys: bson.D{{"ExpiredAt", 1}}})
+	// if err != nil {
+	// 	log.Fatalln("Error creating index: ", ts.tcfg.AccessCName, " - ", err)
+	// }
 
-	_, err = ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.RefreshCName).Indexes().CreateOne(context.TODO(), mongo.IndexModel{
-		Keys: bson.D{{"ExpiredAt", 1}}})
-	if err != nil {
-		log.Fatalln("Error creating index: ", ts.tcfg.RefreshCName, " - ", err)
-	}
+	// _, err = ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.RefreshCName).Indexes().CreateOne(context.TODO(), mongo.IndexModel{
+	// 	Keys: bson.D{{"ExpiredAt", 1}}})
+	// if err != nil {
+	// 	log.Fatalln("Error creating index: ", ts.tcfg.RefreshCName, " - ", err)
+	// }
 
 	store = ts
 	return
@@ -139,9 +139,9 @@ func NewTokenStoreWithSession(client *mongo.Client, cfg *Config, scfgs ...*Store
 
 // TokenStore MongoDB storage for OAuth 2.0
 type TokenStore struct {
-	tcfg       *TokenConfig
-	client     *mongo.Client
-	txnHandler *transactionHandler
+	tcfg   *TokenConfig
+	client *mongo.Client
+	// txnHandler *transactionHandler
 }
 
 func (ts *TokenStore) getClient() *mongo.Client {
