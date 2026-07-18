@@ -188,6 +188,7 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 		}
 	}
 
+	userEmail := info.GetUserEmail()
 	userPassword := info.GetUserPassword()
 	userPath := info.GetUserPath()
 
@@ -200,7 +201,8 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 	}
 	basicData := basicData{
 		ID:           code,
-		Service:      svcName,
+		Service:      svcName, // svcName is the userID or clientID
+		UserEmail:    userEmail,
 		UserPassword: userPassword,
 		UserPath:     userPath,
 		Data:         jv,
@@ -452,7 +454,8 @@ func (ts *TokenStore) GetByCode(ctx context.Context, code string) (ti oauth2.Tok
 
 type basicData struct {
 	ID           string    `bson:"_id"`
-	Service      string    `bson:"Service"` // serverName for server or userEmail
+	Service      string    `bson:"Service"` // serverName for server or userID
+	UserEmail    string    `bson:"UserEmail"`
 	UserPassword string    `bson:"UserPassword"`
 	UserPath     string    `bson:"UserPath"`
 	Data         []byte    `bson:"Data"`
