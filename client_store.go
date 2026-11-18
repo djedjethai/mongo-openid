@@ -85,6 +85,12 @@ func NewDefaultClientConfig(strCfgs *StoreConfig) *ClientConfig {
 // NewClientStore create a client store instance based on mongodb
 func NewClientStore(cfg *Config, scfgs ...*StoreConfig) *ClientStore {
 	clientOptions := options.Client().ApplyURI(cfg.URL)
+
+	// Configure MongoDB TLS
+	if cfg.MongoTLSConfig != nil {
+		clientOptions.SetTLSConfig(cfg.MongoTLSConfig)
+	}
+
 	ctx := context.TODO()
 	ctxPing := context.TODO()
 
