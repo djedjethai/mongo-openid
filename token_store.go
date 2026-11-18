@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-
 	"log"
 	"time"
 
@@ -32,6 +31,12 @@ func NewDefaultTokenConfig(strConfig *StoreConfig) *TokenConfig {
 // NewTokenStore create a token store instance based on mongodb
 func NewTokenStore(cfg *Config, scfgs ...*StoreConfig) (store *TokenStore) {
 	clientOptions := options.Client().ApplyURI(cfg.URL)
+
+	// Configure MongoDB TLS
+	if cfg.MongoTLSConfig != nil {
+		clientOptions.SetTLSConfig(cfg.MongoTLSConfig)
+	}
+
 	ctx := context.TODO()
 	ctxPing := context.TODO()
 

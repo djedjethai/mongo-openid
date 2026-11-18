@@ -15,9 +15,9 @@ func TestClientStoreWithTimeout(t *testing.T) {
 
 	var store *ClientStore
 	if !isReplicaSet {
-		store = NewClientStore(NewConfigNonReplicaSet(url, dbName, username, password, service), storeConfig)
+		store = NewClientStore(NewConfigNonReplicaSet(url, dbName, username, password, service, nil), storeConfig)
 	} else {
-		store = NewClientStore(NewConfigReplicaSet(url, dbName), storeConfig)
+		store = NewClientStore(NewConfigReplicaSet(url, dbName, nil), storeConfig)
 	}
 
 	client := &models.Client{
@@ -80,9 +80,9 @@ func TestClientStoreWithTimeout(t *testing.T) {
 func TestClientStore(t *testing.T) {
 	var store *ClientStore
 	if !isReplicaSet {
-		store = NewClientStore(NewConfigNonReplicaSet(url, dbName, username, password, service))
+		store = NewClientStore(NewConfigNonReplicaSet(url, dbName, username, password, service, nil))
 	} else {
-		store = NewClientStore(NewConfigReplicaSet(url, dbName))
+		store = NewClientStore(NewConfigReplicaSet(url, dbName, nil))
 	}
 
 	client := &models.Client{

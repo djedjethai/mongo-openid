@@ -16,7 +16,7 @@ type Config struct {
 }
 
 // NewConfigNonReplicaSet create mongodb configuration for a non-replicaSet
-func NewConfigNonReplicaSet(url, db, username, password, service string, mongoTLSConfig ...*tls.Config) *Config {
+func NewConfigNonReplicaSet(url, db, username, password, service string, mongoTLSConfig *tls.Config) *Config {
 	config := &Config{
 		URL:          url,
 		DB:           db,
@@ -26,23 +26,23 @@ func NewConfigNonReplicaSet(url, db, username, password, service string, mongoTL
 		IsReplicaSet: false,
 	}
 
-	if mongoTLSConfig[0] != nil {
-		config.MongoTLSConfig = mongoTLSConfig[0]
+	if mongoTLSConfig != nil {
+		config.MongoTLSConfig = mongoTLSConfig
 	}
 
 	return config
 }
 
 // NewConfigReplicaSet create mongodb configuration for a ReplicaSet
-func NewConfigReplicaSet(url, db string, mongoTLSConfig ...*tls.Config) *Config {
+func NewConfigReplicaSet(url, db string, mongoTLSConfig *tls.Config) *Config {
 	config := &Config{
 		URL:          url,
 		DB:           db,
 		IsReplicaSet: true,
 	}
 
-	if mongoTLSConfig[0] != nil {
-		config.MongoTLSConfig = mongoTLSConfig[0]
+	if mongoTLSConfig != nil {
+		config.MongoTLSConfig = mongoTLSConfig
 	}
 
 	return config
